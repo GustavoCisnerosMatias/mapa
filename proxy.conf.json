@@ -1,0 +1,10 @@
+{
+  "/gadm": {
+    "target": "https://geodata.ucdavis.edu",
+    "secure": true,
+    "changeOrigin": true,
+    "pathRewrite": {
+      "^/gadm": "/gadm"
+    }
+  }
+}

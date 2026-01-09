@@ -6,9 +6,9 @@ import { firstValueFrom, timeout } from 'rxjs';
   providedIn: 'root'
 })
 export class OverpassService {
-  // geoBoundaries GeoJSON via jsdelivr CDN (tiene CORS habilitado)
+  // GADM data via proxy local (evita CORS)
   // ADM1 = Provincias, ADM2 = Cantones
-  private geoBoundariesUrl = 'https://cdn.jsdelivr.net/gh/wmgeolab/geoBoundaries@main/releaseData/gbOpen/ECU/ADM2/geoBoundaries-ECU-ADM2.geojson';
+  private gadmUrl = '/gadm/gadm4.1/json/gadm41_ECU_2.json';
   
   // Cache de datos
   private cantonesData: any = null;
@@ -45,19 +45,25 @@ export class OverpassService {
   constructor(private http: HttpClient) {}
 
   /**
-   * Carga los datos de geoBoundaries (cantones de Ecuador)
+   * Carga los datos de GADM (cantones de Ecuador)
    */
   private async loadGeoBoundariesData(): Promise<any> {
     if (this.cantonesData) {
       return this.cantonesData;
     }
 
-    console.log('📡 Conectando con geoBoundaries CDN...');
+    console.log('📡 Conectando con GADM (UC Davis)...');
     
-    // Descargar el GeoJSON directamente desde jsdelivr CDN
-    this.cantonesData = await firstValueFrom(
-      this.http.get<any>(this.geoBoundariesUrl).pipe(timeout(60000))
+    // Descargar el GeoJSON de GADM - Universidad de California Davis
+    const response = await firstValueFrom(
+      this.http.get<any>(this.gadmUrl, { responseType: 'json' as any }).pipe(timeout(60000))
     );
+
+    // GADM usa formato diferente, convertir a GeoJSON estándar
+    this.cantonesData = {
+      type: 'FeatureCollection',
+      features: response.features || response
+    };
 
     console.log(`✓ ${this.cantonesData.features.length} cantones de Ecuador cargados`);
     return this.cantonesData;
@@ -72,10 +78,9 @@ export class OverpassService {
       
       const allCantones = await this.loadGeoBoundariesData();
       
-      // Filtrar solo cantones de Guayas
+      // GADM usa NAME_1 para provincia (ADM1) y NAME_2 para cantón (ADM2)
       const guayasCantones = allCantones.features.filter((f: any) => {
-        const name = f.properties?.shapeName || f.properties?.shapeGroup || '';
-        const province = f.properties?.shapeGroup || f.properties?.ADM1_ES || '';
+        const province = f.properties?.NAME_1 || f.properties?.ADM1_ES || '';
         return province.toLowerCase().includes('guayas');
       });
 
@@ -106,7 +111,7 @@ export class OverpassService {
           }]
         };
 
-        console.log('✓ Guayas cargado desde geoBoundaries');
+        console.log('✓ Guayas cargado desde GADM');
         return this.guayasData;
       }
 
@@ -126,15 +131,15 @@ export class OverpassService {
       
       const allCantones = await this.loadGeoBoundariesData();
       
-      // Filtrar solo cantones de Guayas
+      // GADM usa NAME_1 para provincia (ADM1) y NAME_2 para cantón (ADM2)
       const guayasCantones = allCantones.features.filter((f: any) => {
-        const province = f.properties?.shapeGroup || f.properties?.ADM1_ES || '';
+        const province = f.properties?.NAME_1 || '';
         return province.toLowerCase().includes('guayas');
       });
 
-      // Mapear nombres para que coincidan con nuestra lista
+      // Mapear nombres usando NAME_2 de GADM
       const features = guayasCantones.map((f: any) => {
-        const originalName = f.properties?.shapeName || f.properties?.ADM2_ES || 'Sin nombre';
+        const originalName = f.properties?.NAME_2 || f.properties?.name || 'Sin nombre';
         return {
           ...f,
           properties: {
